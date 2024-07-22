@@ -15,12 +15,12 @@ agentColors = []
 currentTime = 0
 maxTime = 0
 agentInfo = []
-agents = 2
+agents = 15
 starts = []
 ends = []
 allCollisions = []
 timeLimit = 5
-test = [1, 2] #generate starting position for specific tests
+test = [1, 4] #generate starting position for specific tests
 AStarAllNodes = []
 
 colors = ["spring", "summer", "autumn", "winter", "cool", "Wistia", "PiYG", "PRGn", "BrBG", "PuOr", "RdGy", "bwr",
@@ -28,8 +28,8 @@ colors = ["spring", "summer", "autumn", "winter", "cool", "Wistia", "PiYG", "PRG
 
 class Node: #for A*
     def __init__(self):
-        self.parentX = int
-        self.parentY = int
+        self.parent = None
+        self.curr = None
         self.f = float('inf')
         self.g = float('inf')
 
@@ -37,13 +37,21 @@ def onMap(pos):
     return 0 <= pos[0] < width and 0 <= pos[1] < height
 
 def startAndEnd(): #generate starting and ending locations
-    sPos = random.choice(test)  # small area testing
-    if sPos == 1:
-        start = [1, 2]
-        end = [4, 3]
-    else:
-        start = [2, 1]
-        end = [3, 4]
+    start = []
+    end = []
+    sPos = random.choice(mapPathSpace)
+    ePos = random.choice(mapPathSpace)
+    start.append(sPos[0])
+    start.append(sPos[1])
+    end.append(ePos[0])
+    end.append(ePos[1])
+    # sPos = random.choice(test)  # small area testing
+    # if sPos == 1:
+    #     start = [1, 1]
+    #     end = [4, 1]
+    # else:
+    #     start = [4, 1]
+    #     end = [1, 1]
     return start, end
 
 def heuristicValue(pos, end):
@@ -119,7 +127,7 @@ def displayMap(mapFile): #starting command, generates agents, collisionless path
     axis.imshow(mapArray, cmap='grey', aspect='equal', origin='upper')
     allAgents = []
     for i in range(agents):
-        agentPath = aStar(None, None, [], [], 0)
+        agentPath = aStar(None, None, [], [])
         allAgents.append(agentPath)
     finalAgentPaths = CBS(allAgents)
     allPaths = finalAgentPaths
@@ -138,37 +146,37 @@ def displayMap(mapFile): #starting command, generates agents, collisionless path
     timeSlider.on_changed(updateMap)
     plt.show()
 
-def createPath(nodeInfo, start, end, AStarNodes): #recreate the path based on recorded nodes
-    global AStarAllNodes
-    AStarNodes.sort(key=lambda n: n[0])
-    path = [end]
+def createPath(nodeInfo, start, end): #recreate the path based on recorded nodes
+    path = []
     currentPos = end
-    while currentPos != start:
-        for node in AStarNodes:
-            if len(node) < 3:
-                continue
-            if node[1] == currentPos:
-                currentPos = node[2]
-                path.append(currentPos)
-                break
-    AStarAllNodes.clear()
+    currentNode = nodeInfo[currentPos[1]][currentPos[0]].parent
+    while currentNode["parent"] != None:
+        path.append(currentNode["curr"])
+        currentNode = currentNode["parent"]
+    path.append(start)
     path.reverse()
     return path
 
-def checkCollision(cPosition, nPosition, nodeInfo, nodeClosed, collision, constraints, id): #check if position collides with previous recorded collisions or walls
+def checkCollision(cPosition, nPosition, nodeInfo, nodeClosed, collision, constraints, id):
+    print('constraints', constraints)
     for constraint in constraints:
         if onMap(nPosition) and nPosition not in mapWallSpaces and not nodeClosed[nPosition[1]][nPosition[0]]:
-            if id == 1 and collision[2] == 'edge' and nPosition != constraint[0] or id == 1 and collision[2] == 'edge' and nPosition == constraint[0] and nodeInfo[cPosition[1]][cPosition[0]].g + 1 != constraint[1]:
+            if collision[2] == 'edge' and nPosition != constraint[0] and nPosition != constraint[2]:
                 continue
-            elif id == 2 and collision[2] == 'edge' and nPosition != constraint[2] or id == 2 and collision[2] == 'edge' and nPosition == constraint[2] and nodeInfo[cPosition[1]][cPosition[0]].g + 1 != constraint[1]:
+            elif collision[2] == 'edge' and nPosition == constraint[0] and (constraint[1] + 1 < nodeInfo[cPosition[1]][cPosition[0]].g + 1 or constraint[1] > nodeInfo[cPosition[1]][cPosition[0]].g + 1):
                 continue
-            elif collision[2] == 'vertex' and nPosition != constraint[0] or collision[2] == 'vertex' and nPosition == constraint[0] and nodeInfo[cPosition[1]][cPosition[0]].g + 1 != constraint[1]:
+            elif collision[2] == 'edge' and nPosition == constraint[2] and (constraint[1] + 1 < nodeInfo[cPosition[1]][cPosition[0]].g + 1 or constraint[1] > nodeInfo[cPosition[1]][cPosition[0]].g + 1):
+                continue
+            elif collision[2] == 'vertex' and nPosition != constraint[0]:
+                continue
+            elif collision[2] == 'vertex' and nPosition == constraint[0] and nodeInfo[cPosition[1]][cPosition[0]].g + 1 != constraint[1]:
                 continue
             else:
                 return False
+        else:
+            return False
     return True
-
-def aStar(start, end, collision, constraints, id): #A* algorithm
+def aStar(start, end, collision, constraints): #A* algorithm
     global maxTime, starts, ends, AStarAllNodes
     if start is None and end is None:
         start, end = startAndEnd()
@@ -180,17 +188,17 @@ def aStar(start, end, collision, constraints, id): #A* algorithm
     nodeClosed = [[False for _ in range(width)] for _ in range(height)]
     openNodes = pq()
     openNodes.put((0, start))
-    AStarAllNodes.append([0, start])
+    currAndParent = {"curr": start, "parent": None}
     nodeInfo[start[1]][start[0]].g = 0
     nodeInfo[start[1]][start[0]].f = heuristicValue(start, end)
-    nodeInfo[start[1]][start[0]].parentX = start[0]
-    nodeInfo[start[1]][start[0]].parentY = start[1]
+    nodeInfo[start[1]][start[0]].curr = start
+    nodeInfo[start[1]][start[0]].parent = currAndParent
     while not openNodes.empty():
+        print('--------------------------------------------------------------')
         _, cPosition = openNodes.get()
         if cPosition == end:
-            path = createPath(nodeInfo, start, end, AStarAllNodes)
+            path = createPath(nodeInfo, start, end)
             return path
-        AStarAllNodes.sort(key=lambda n: n[0])
 
         nodeClosed[cPosition[1]][cPosition[0]] = True
         neighborCells = [
@@ -202,27 +210,28 @@ def aStar(start, end, collision, constraints, id): #A* algorithm
         ]
 
         for nPosition in neighborCells:
+            currAndParent = {"curr": nPosition, "parent": nodeInfo[cPosition[1]][cPosition[0]].parent}
             if nPosition == cPosition:
                 newG = nodeInfo[cPosition[1]][cPosition[0]].g + 1  # staying in place
                 newH = heuristicValue(nPosition, end)
                 newF = newG + newH
                 openNodes.put((newF, nPosition))
-                AStarAllNodes.append([newF, nPosition, cPosition])
                 nodeInfo[nPosition[1]][nPosition[0]].f = newF
                 nodeInfo[nPosition[1]][nPosition[0]].g = newG
+                nodeInfo[nPosition[1]][nPosition[0]].curr = nPosition
+                # print('curr and parent', currAndParent)
+                nodeInfo[nPosition[1]][nPosition[0]].parent = currAndParent
             if onMap(nPosition) and nPosition not in mapWallSpaces and not nodeClosed[nPosition[1]][nPosition[0]]:
                 if checkCollision(cPosition, nPosition, nodeInfo, nodeClosed, collision, constraints, id):
                     newG = nodeInfo[cPosition[1]][cPosition[0]].g + 1
                     newH = heuristicValue(nPosition, end)
                     newF = newG + newH
-
                     if newF < nodeInfo[nPosition[1]][nPosition[0]].f:
                         openNodes.put((newF, nPosition))
-                        AStarAllNodes.append([newF, nPosition, cPosition])
                         nodeInfo[nPosition[1]][nPosition[0]].f = newF
                         nodeInfo[nPosition[1]][nPosition[0]].g = newG
-                        nodeInfo[nPosition[1]][nPosition[0]].parentX = cPosition[0]
-                        nodeInfo[nPosition[1]][nPosition[0]].parentY = cPosition[1]
+                        nodeInfo[nPosition[1]][nPosition[0]].curr = nPosition
+                        nodeInfo[nPosition[1]][nPosition[0]].parent = currAndParent
 
     return []  # no path
 
@@ -254,24 +263,52 @@ class CBSNode: #node of CBS
 def totalCost(agents):
     return sum(len(agent) for agent in agents)
 
-def detectCollision(agent1, agent2): #detect new collisions within the agents given
+def detectCollision(agent1, agent2): #takes in the paths, finds first new collision between the pair
     global allCollisions
-    length = max(len(agent1), len(agent2))
+    localCollision = []
+    length = min(len(agent1), len(agent2))
+    print('------------------------------------------------')
     for k in range(length):
-        pos1 = agent1[k] if k < len(agent1) else agent1[-1]
-        pos2 = agent2[k] if k < len(agent2) else agent2[-1]
-        if pos1 == pos2:
-            if [pos1[0], pos1[1], k] not in allCollisions:
-                allCollisions.append([pos1[0], pos1[1], k])
-                return [[pos1, k, 'vertex', None, agent1, agent2]]
-        elif k + 1 < length:
-            nextPos1 = agent1[k + 1] if k + 1 < len(agent1) else agent1[-1]
-            nextPos2 = agent2[k + 1] if k + 1 < len(agent2) else agent2[-1]
-            if pos1 == nextPos2 and nextPos1 == pos2:
-                if [pos1[0], pos1[1], k] not in allCollisions:
-                    allCollisions.append([pos1[0], pos1[1], k])
-                    return [[pos1, k, 'edge', nextPos1, agent1, agent2]]
-    return []
+        if agent1[k] in agent2:
+            if agent1[k] == agent2[k]: #vertex collision
+                print('collision detected', k)
+                if [agent1[k], k] not in allCollisions: #confirm position hasnt been marked yet
+                    x = agent1[k][0]
+                    y = agent1[k][1]
+                    allCollisions.append([x, y, k])
+                    localCollision.append([[x, y], k, 'vertex', None, agent1, agent2])
+                    print("collision 1 at time", k)
+                    break
+                else:
+                    try:
+                        if agent1[k + 1] == agent2[k] and agent1[k] == agent2[k + 1]: #edge collision
+                            print('collision detected', k)
+                            if [agent1[k], k] not in allCollisions: #confirm position hasnt been marked yet
+                                x = agent1[k][0]
+                                y = agent1[k][1]
+                                allCollisions.append([x, y, k])
+                                localCollision.append([[x, y], k, 'edge', agent1[k+1], agent1, agent2])
+                                print("collision 2 at time", k)
+                                break
+                    except:
+                        print("no collision")
+            else:
+                try:
+                    if agent1[k + 1] == agent2[k] and agent1[k] == agent2[k + 1]: #edge collision
+                        print('collision detected')
+                        if [agent1[k], k] not in allCollisions:  # confirm position hasnt been marked yet
+                            x = agent1[k][0]
+                            y = agent1[k][1]
+                            allCollisions.append([x, y, k])
+                            localCollision.append([[x, y], k, 'edge', agent1[k + 1], agent1, agent2])
+                            print("collision 2 at time", k)
+                            break
+                except:
+                    print("no collision")
+        else:
+            print("no collision")
+    return localCollision
+
 
 def detectAllCollisions(paths): #find all collisions in paths
     paths.sort(key=len, reverse=True)
@@ -300,6 +337,7 @@ def CBS(paths):
     initialNode.collisions = detectAllCollisions(paths)
     nodesCBS.put((initialNode.cost, initialNode))
     while not nodesCBS.empty():
+        id = 1
         currentNode = nodesCBS.get()[1]
         if not currentNode.collisions:
             return currentNode.paths
@@ -307,7 +345,7 @@ def CBS(paths):
         constraints = standardSplitting(currentCollision)
         allConstraints.append(constraints)
         for agent in currentCollision[-2:]:
-            newPath = aStar(agent[0], agent[-1], currentCollision, allConstraints, 1)
+            newPath = aStar(agent[0], agent[-1], currentCollision, allConstraints)
             if not newPath:  # no path
                 continue
             pathIndex = currentNode.paths.index(agent)
@@ -319,10 +357,10 @@ def CBS(paths):
             newNode.collisions = detectAllCollisions(newPaths)
             newNode.constraints = allConstraints
             nodesCBS.put((newNode.cost, newNode))
-
+            id += 1
             if not newNode.collisions:
                 return newNode.paths
     return paths
 
 # main
-displayMap('verySmallWarehouseMap.txt')
+displayMap('smallWarehouseMap.map')

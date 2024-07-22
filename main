@@ -20,7 +20,7 @@ starts = []
 ends = []
 allCollisions = []
 timeLimit = 5
-test = [1, 4] #generate starting position for specific tests
+test = [1, 2] #generate starting position for specific tests
 AStarAllNodes = []
 
 colors = ["spring", "summer", "autumn", "winter", "cool", "Wistia", "PiYG", "PRGn", "BrBG", "PuOr", "RdGy", "bwr",
@@ -39,11 +39,11 @@ def onMap(pos):
 def startAndEnd(): #generate starting and ending locations
     sPos = random.choice(test)  # small area testing
     if sPos == 1:
-        start = [1, 1]
-        end = [4, 1]
+        start = [1, 2]
+        end = [4, 3]
     else:
-        start = [4, 1]
-        end = [1, 1]
+        start = [2, 1]
+        end = [3, 4]
     return start, end
 
 def heuristicValue(pos, end):

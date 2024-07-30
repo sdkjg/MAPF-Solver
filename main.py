@@ -3,6 +3,7 @@ from matplotlib.widgets import Slider
 import numpy as np
 import random
 from queue import PriorityQueue as pq
+import heapq as hq
 
 # variables
 mapLayout = []
@@ -29,7 +30,6 @@ colors = ["spring", "summer", "autumn", "winter", "cool", "Wistia", "PiYG", "PRG
 class Node: #for A*
     def __init__(self):
         self.parent = None
-        self.curr = None
         self.f = float('inf')
         self.g = float('inf')
 
@@ -47,11 +47,11 @@ def startAndEnd(): #generate starting and ending locations
     # end.append(ePos[1])
     # sPos = random.choice(test)  # small area testing
     # if sPos == 1:
-    #     start = [1, 2]
-    #     end = [4, 3]
+    #     start = [1, 1]
+    #     end = [4, 1]
     # else:
-    #     start = [2, 1]
-    #     end = [3, 4]
+    #     start = [4, 1]
+    #     end = [1, 1]
     sPos = random.choice(test)  # small area testing
     if sPos == 1:
         start = [1, 1]
@@ -134,7 +134,7 @@ def displayMap(mapFile): #starting command, generates agents, collisionless path
     axis.imshow(mapArray, cmap='grey', aspect='equal', origin='upper')
     allAgents = []
     for i in range(agents):
-        agentPath = aStar(None, None, [], [])
+        agentPath = aStar(None, None, [])
         allAgents.append(agentPath)
     finalAgentPaths = CBS(allAgents)
     allPaths = finalAgentPaths
@@ -153,37 +153,35 @@ def displayMap(mapFile): #starting command, generates agents, collisionless path
     timeSlider.on_changed(updateMap)
     plt.show()
 
-def createPath(nodeInfo, start, end): #recreate the path based on recorded nodes
+def createPath(parentInfo, start, end): #recreate the path based on recorded nodes
     path = []
     currentPos = end
-    currentNode = nodeInfo[currentPos[1]][currentPos[0]].parent
-    while currentNode["parent"] != None:
-        path.append(currentNode["curr"])
-        currentNode = currentNode["parent"]
+    currentNode = parentInfo
+    while currentNode[1] != None:
+        path.append(currentNode[0])
+        currentNode = currentNode[1]
     path.append(start)
     path.reverse()
     return path
 
-def checkCollision(cPosition, nPosition, nodeInfo, nodeClosed, constraints):
-    print('constraints', constraints)
+def checkCollision(cPosition, nPosition, nodeInfo, closedNodes, constraints): #FIXXXXX
+    fValue = nodeInfo[0]
+    gValue = nodeInfo[1]
     for constraint in constraints:
-        if onMap(nPosition) and nPosition not in mapWallSpaces and not nodeClosed[nPosition[1]][nPosition[0]]:
-            if constraint[2] is not None and nPosition != constraint[0] and nPosition != constraint[2]:
-                continue
-            elif constraint[2] is not None and nPosition == constraint[0] and (constraint[1] + 1 < nodeInfo[cPosition[1]][cPosition[0]].g + 1 or constraint[1] > nodeInfo[cPosition[1]][cPosition[0]].g + 1):
-                continue
-            elif constraint[2] is not None and nPosition == constraint[2] and (constraint[1] + 1 < nodeInfo[cPosition[1]][cPosition[0]].g + 1 or constraint[1] > nodeInfo[cPosition[1]][cPosition[0]].g + 1):
-                continue
-            elif constraint[2] is None and nPosition != constraint[0]:
-                continue
-            elif constraint[2] is None and nPosition == constraint[0] and nodeInfo[cPosition[1]][cPosition[0]].g + 1 != constraint[1]:
-                continue
-            else:
-                return False
-        else:
-            return False
+        if onMap(nPosition) and nPosition not in mapWallSpaces and [nPosition[0], nPosition[1], gValue + 1] not in closedNodes:
+            if constraint[2] is not None: #edge constriaint
+                if cPosition == constraint[0] and gValue == constraint[1]:
+                    if nPosition == constraint[2]:
+                        return False
+                elif cPosition == constraint[2] and gValue == constraint[1]:
+                    if nPosition == constraint[0]:
+                        return False
+            elif constraint[2] is None: #vertex constraint
+                if nPosition == constraint[0] and gValue + 1 == constraint[1]:
+                    return False
     return True
-def aStar(start, end, collision, constraints): #A* algorithm
+
+def aStar(start, end, constraints): #A* algorithm
     global maxTime, starts, ends, AStarAllNodes
     if start is None and end is None:
         start, end = startAndEnd()
@@ -191,22 +189,27 @@ def aStar(start, end, collision, constraints): #A* algorithm
             start, end = startAndEnd()
     starts.append(start)
     ends.append(end)
-    nodeInfo = [[Node() for _ in range(width)] for _ in range(height)]
-    nodeClosed = [[False for _ in range(width)] for _ in range(height)]
+    # nodeInfo = [[Node() for _ in range(width)] for _ in range(height)]
+    closedNodes = []
     openNodes = pq()
+    openNodes2 = []
     openNodes.put((0, start))
-    currAndParent = {"curr": start, "parent": None}
-    nodeInfo[start[1]][start[0]].g = 0
-    nodeInfo[start[1]][start[0]].f = heuristicValue(start, end)
-    nodeInfo[start[1]][start[0]].curr = start
-    nodeInfo[start[1]][start[0]].parent = currAndParent
+    currAndParent = [start, None]
+    hq.heappush(openNodes2, (heuristicValue(start, end), 0, currAndParent))
+    closedNodes.append([start[0], start[1], 0])
     while not openNodes.empty():
-        _, cPosition = openNodes.get()
+        print(openNodes2)
+        hq.heapify(openNodes2)
+        fValue, gValue, parentInfo = hq.heappop(openNodes2)
+        cPosition = parentInfo[0]
+        info = [fValue, gValue]
+        fValue = info[0]
+        gValue = info[1]
+        # _, cPosition = openNodes.get()
         if cPosition == end:
-            path = createPath(nodeInfo, start, end)
+            path = createPath(parentInfo, start, end)
             return path
-
-        nodeClosed[cPosition[1]][cPosition[0]] = True
+        closedNodes.append([cPosition[0], cPosition[1], gValue])
         neighborCells = [
             [cPosition[0] + 1, cPosition[1]],
             [cPosition[0] - 1, cPosition[1]],
@@ -216,28 +219,21 @@ def aStar(start, end, collision, constraints): #A* algorithm
         ]
 
         for nPosition in neighborCells:
-            currAndParent = {"curr": nPosition, "parent": nodeInfo[cPosition[1]][cPosition[0]].parent}
+            currAndParent = [nPosition, parentInfo]
             if nPosition == cPosition:
-                newG = nodeInfo[cPosition[1]][cPosition[0]].g + 1  # staying in place
+                newG = gValue + 1  # staying in place
                 newH = heuristicValue(nPosition, end)
                 newF = newG + newH
-                openNodes.put((newF, nPosition))
-                nodeInfo[nPosition[1]][nPosition[0]].f = newF
-                nodeInfo[nPosition[1]][nPosition[0]].g = newG
-                nodeInfo[nPosition[1]][nPosition[0]].curr = nPosition
-                
-                nodeInfo[nPosition[1]][nPosition[0]].parent = currAndParent
-            if onMap(nPosition) and nPosition not in mapWallSpaces and not nodeClosed[nPosition[1]][nPosition[0]]:
-                if checkCollision(cPosition, nPosition, nodeInfo, nodeClosed, constraints):
-                    newG = nodeInfo[cPosition[1]][cPosition[0]].g + 1
+                if checkCollision(cPosition, nPosition, info, closedNodes, constraints):
+                    hq.heappush(openNodes2, (newF, newG, currAndParent))
+                    closedNodes.append([nPosition[0], nPosition[1], newG])
+            if onMap(nPosition) and nPosition not in mapWallSpaces and [nPosition[0], nPosition[1], gValue + 1] not in closedNodes:
+                if checkCollision(cPosition, nPosition, info, closedNodes, constraints):
+                    newG = gValue + 1
                     newH = heuristicValue(nPosition, end)
                     newF = newG + newH
-                    if newF < nodeInfo[nPosition[1]][nPosition[0]].f:
-                        openNodes.put((newF, nPosition))
-                        nodeInfo[nPosition[1]][nPosition[0]].f = newF
-                        nodeInfo[nPosition[1]][nPosition[0]].g = newG
-                        nodeInfo[nPosition[1]][nPosition[0]].curr = nPosition
-                        nodeInfo[nPosition[1]][nPosition[0]].parent = currAndParent
+                    hq.heappush(openNodes2, (newF, newG, currAndParent))
+                    closedNodes.append([nPosition[0], nPosition[1], newG])
 
     return []  # no path
 
@@ -277,44 +273,31 @@ def detectCollision(agent1, agent2): #takes in the paths, finds first new collis
     for k in range(length):
         if agent1[k] in agent2:
             if agent1[k] == agent2[k]: #vertex collision
-                print('collision detected', k)
-                if [agent1[k][0], agent1[k][1], k] not in allCollisions: #confirm position hasnt been marked yet
-
-                    x = agent1[k][0]
-                    y = agent1[k][1]
-                    allCollisions.append([x, y, k])
-                    localCollision.append([[x, y], k, 'vertex', None, agent1, agent2])
-                    print("collision 1 at time", k)
-                    break
-                else:
-                    try:
-                        if agent1[k + 1] == agent2[k] and agent1[k] == agent2[k + 1]: #edge collision
-                            print('collision detected', k)
-                            if [agent1[k][0], agent1[k][1], k] not in allCollisions: #confirm position hasnt been marked yet
-                                x = agent1[k][0]
-                                y = agent1[k][1]
-                                allCollisions.append([x, y, k])
-                                localCollision.append([[x, y], k, 'edge', agent1[k+1], agent1, agent2])
-                                print("collision 2 at time", k)
-                                break
-                    except:
-                        print("no collision")
+                print('collision 1 detected', k)
+                print([agent1[k][0], agent1[k][1], k], allCollisions)
+                x = agent1[k][0]
+                y = agent1[k][1]
+                allCollisions.append([x, y, k, 'vertex'])
+                localCollision.append([[x, y], k, 'vertex', None, agent1, agent2])
+                print("collision 1 at time", k)
+                return localCollision
             else:
                 try:
-                    if agent1[k + 1] == agent2[k] and agent1[k] == agent2[k + 1]: #edge collision
-                        print('collision detected')
-                        if [agent1[k][0], agent1[k][1], k] not in allCollisions:  # confirm position hasnt been marked yet
-                            x = agent1[k][0]
-                            y = agent1[k][1]
-                            allCollisions.append([x, y, k])
-                            localCollision.append([[x, y], k, 'edge', agent1[k + 1], agent1, agent2])
-                            print("collision 2 at time", k)
-                            break
+                    if agent1[k + 1] == agent2[k] and agent1[k] == agent2[k + 1]:  # edge collision
+                        print('collision 2 detected', k)
+                        print([agent1[k][0], agent1[k][1], k], allCollisions)
+                        x = agent1[k][0]
+                        y = agent1[k][1]
+                        allCollisions.append([x, y, k, 'edge'])
+                        localCollision.append([[x, y], k, 'edge', agent1[k + 1], agent1, agent2])
+                        print("collision 2 at time", k)
+                        return localCollision
+                    else:
+                        print('no collision')
                 except:
-                    print("no collision")
+                    print('no collision')
         else:
-            print("no collision")
-    return localCollision
+            print('no collision')
 
 
 def detectAllCollisions(paths): #find all collisions in paths
@@ -351,7 +334,9 @@ def CBS(paths):
         constraints = standardSplitting(currentCollision)
         allConstraints.append(constraints)
         for agent in currentCollision[-2:]:
-            newPath = aStar(agent[0], agent[-1], currentCollision, allConstraints)
+            newPath = aStar(agent[0], agent[-1], allConstraints)
+            print('constraints', allConstraints)
+            print('path', newPath)
             if not newPath:  # no path
                 continue
             pathIndex = currentNode.paths.index(agent)

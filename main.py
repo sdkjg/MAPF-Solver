@@ -1,9 +1,10 @@
+import time
+
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider
 import numpy as np
 import random
-from queue import PriorityQueue as pq
 import heapq as hq
+from matplotlib.animation import FuncAnimation
 
 # variables
 mapLayout = []
@@ -16,35 +17,31 @@ agentColors = []
 currentTime = 0
 maxTime = 0
 agentInfo = []
-agents = 2
+agents = 30
 starts = []
 ends = []
-allCollisions = []
 timeLimit = 5
 test = [1, 4] #generate starting position for specific tests
-AStarAllNodes = []
+display = plt.figure()
+
 
 colors = ["spring", "summer", "autumn", "winter", "cool", "Wistia", "PiYG", "PRGn", "BrBG", "PuOr", "RdGy", "bwr",
-          "Pastel1", "Pastel2", "Paired", "Accent", "Dark2", "tab10", "tab20", "tab20b"] #agent colors
-
-class Node: #for A*
-    def __init__(self):
-        self.parent = None
-        self.f = float('inf')
-        self.g = float('inf')
+          "Pastel1", "Pastel2", "Paired", "Accent", "Dark2", "tab10", "tab20", "tab20b", "tab20c", 'binary', 'gist_yarg', 'gist_gray', 'gray', 'bone',
+                      'pink', 'spring', 'summer', 'autumn', 'winter', 'cool',
+                      'Wistia', 'hot', 'afmhot', 'gist_heat', 'copper'] #agent colors
 
 def onMap(pos):
     return 0 <= pos[0] < width and 0 <= pos[1] < height
 
 def startAndEnd(): #generate starting and ending locations
-    # start = []
-    # end = []
-    # sPos = random.choice(mapPathSpace)
-    # ePos = random.choice(mapPathSpace)
-    # start.append(sPos[0])
-    # start.append(sPos[1])
-    # end.append(ePos[0])
-    # end.append(ePos[1])
+    start = []
+    end = []
+    sPos = random.choice(mapPathSpace)
+    ePos = random.choice(mapPathSpace)
+    start.append(sPos[0])
+    start.append(sPos[1])
+    end.append(ePos[0])
+    end.append(ePos[1])
     # sPos = random.choice(test)  # small area testing
     # if sPos == 1:
     #     start = [1, 1]
@@ -52,13 +49,13 @@ def startAndEnd(): #generate starting and ending locations
     # else:
     #     start = [4, 1]
     #     end = [1, 1]
-    sPos = random.choice(test)  # small area testing
-    if sPos == 1:
-        start = [1, 1]
-        end = [4, 1]
-    else:
-        start = [4, 1]
-        end = [1, 1]
+    # sPos = random.choice(test)  # small area testing
+    # if sPos == 1:
+    #     start = [1, 1]
+    #     end = [4, 1]
+    # else:
+    #     start = [4, 1]
+    #     end = [1, 1]
     return start, end
 
 def heuristicValue(pos, end):
@@ -109,48 +106,59 @@ def agentMap(agentPos, displayPos, clear): #create map of path for single agent
                 agentInfo[-1].append([x, y])
     return agentArray
 
-def updateMap(val): #update map based on slider value for time
-    global currentTime
-    currentTime = int(timeSlider.val)
+def updateMap(frame):  # Update map for each frame
+    global currentTime, axis, mapArray
+    currentTime = frame
+    axis.clear()
     agentArray = agentMap(None, None, True)
     agentArray = np.ma.masked_where(agentArray == 0, agentArray)
+    axis.imshow(mapArray, cmap='grey', aspect='equal', origin='upper')
     axis.imshow(agentArray, cmap='binary', aspect='equal', origin='upper')
     for i in range(agents):
         agentPath = allPaths[i]
         color = agentColors[i]
         limit = min(len(agentPath), currentTime) + 1
-        agentPos = agentPath[:limit][-1]
+        agentPos = agentPath[:limit][-1]  # Get current position
         agentArray = agentMap(agentPath, agentPos, False)
         agentArray = np.ma.masked_where(agentArray == 0, agentArray)
         axis.imshow(agentArray, cmap=color, aspect='equal', origin='upper')
 
-def displayMap(mapFile): #starting command, generates agents, collisionless paths, and displays map and agents
-    global timeSlider, axis, allPaths, maxTime
+def displayMap(mapFile):  # Starting command, generates agents, collisionless paths, and displays map and agents
+    global allPaths, maxTime, axis, mapArray
+    startT = time.time()
+    pathLengths = []
     maxTime = 0
     mapArray = readMap(mapFile)
     fig, axis = plt.subplots()
-    plt.subplots_adjust(bottom=0.2)
-    axes = plt.axes((0.15, 0.1, 0.7, 0.03))
     axis.imshow(mapArray, cmap='grey', aspect='equal', origin='upper')
+
     allAgents = []
     for i in range(agents):
         agentPath = aStar(None, None, [])
         allAgents.append(agentPath)
+
     finalAgentPaths = CBS(allAgents)
     allPaths = finalAgentPaths
+    print("# of agents", len(allPaths))
+
     for path in allPaths:
+        pathLengths.append(len(path) - 1)
         if len(path) > maxTime:
             maxTime = len(path) - 1
+
     for agentPath in allPaths:
         displayPos = agentPath[-1]
         agentArray = agentMap(agentPath, displayPos, False)
-        agentArray = np.ma.masked_where(agentArray == 0, agentArray)
+        agentArray = np.ma.masked_where(agentArray == 1, agentArray)
         color = random.choice(colors)
         colors.remove(color)
         agentColors.append(color)
-        axis.imshow(agentArray, cmap=color, aspect='equal', origin='upper')
-    timeSlider = Slider(axes, "Time", 0, maxTime, valstep=1.0, valinit=0.0)
-    timeSlider.on_changed(updateMap)
+
+    print('total time', round(time.time() - startT, 4))
+    print('max length', max(pathLengths))
+    print('min length', min(pathLengths))
+
+    animation = FuncAnimation(fig, updateMap, frames=range(maxTime + 1), interval=20)
     plt.show()
 
 def createPath(parentInfo, start, end): #recreate the path based on recorded nodes
@@ -189,18 +197,14 @@ def aStar(start, end, constraints): #A* algorithm
             start, end = startAndEnd()
     starts.append(start)
     ends.append(end)
-    # nodeInfo = [[Node() for _ in range(width)] for _ in range(height)]
     closedNodes = []
-    openNodes = pq()
-    openNodes2 = []
-    openNodes.put((0, start))
+    openNodes = []
     currAndParent = [start, None]
-    hq.heappush(openNodes2, (heuristicValue(start, end), 0, currAndParent))
+    hq.heappush(openNodes, (heuristicValue(start, end), 0, currAndParent))
     closedNodes.append([start[0], start[1], 0])
-    while not openNodes.empty():
-        print(openNodes2)
-        hq.heapify(openNodes2)
-        fValue, gValue, parentInfo = hq.heappop(openNodes2)
+    while len(openNodes) != 0:
+        hq.heapify(openNodes)
+        fValue, gValue, parentInfo = hq.heappop(openNodes)
         cPosition = parentInfo[0]
         info = [fValue, gValue]
         fValue = info[0]
@@ -225,14 +229,14 @@ def aStar(start, end, constraints): #A* algorithm
                 newH = heuristicValue(nPosition, end)
                 newF = newG + newH
                 if checkCollision(cPosition, nPosition, info, closedNodes, constraints):
-                    hq.heappush(openNodes2, (newF, newG, currAndParent))
+                    hq.heappush(openNodes, (newF, newG, currAndParent))
                     closedNodes.append([nPosition[0], nPosition[1], newG])
             if onMap(nPosition) and nPosition not in mapWallSpaces and [nPosition[0], nPosition[1], gValue + 1] not in closedNodes:
                 if checkCollision(cPosition, nPosition, info, closedNodes, constraints):
                     newG = gValue + 1
                     newH = heuristicValue(nPosition, end)
                     newF = newG + newH
-                    hq.heappush(openNodes2, (newF, newG, currAndParent))
+                    hq.heappush(openNodes, (newF, newG, currAndParent))
                     closedNodes.append([nPosition[0], nPosition[1], newG])
 
     return []  # no path
@@ -266,18 +270,22 @@ def totalCost(agents):
     return sum(len(agent) for agent in agents)
 
 def detectCollision(agent1, agent2): #takes in the paths, finds first new collision between the pair
-    global allCollisions
     localCollision = []
-    length = min(len(agent1), len(agent2))
+    minLength = min(len(agent1), len(agent2))
+    maxLength = max(len(agent1), len(agent2))
+    # if minLength == len(agent1):
+    #     while len(agent1) != len(agent2):
+    #         agent1.append(agent1[-1])
+    # elif minLength == len(agent2):
+    #     while len(agent2) != len(agent1):
+    #         agent2.append(agent2[-1])
     print('------------------------------------------------')
-    for k in range(length):
+    for k in range(minLength):
         if agent1[k] in agent2:
             if agent1[k] == agent2[k]: #vertex collision
                 print('collision 1 detected', k)
-                print([agent1[k][0], agent1[k][1], k], allCollisions)
                 x = agent1[k][0]
                 y = agent1[k][1]
-                allCollisions.append([x, y, k, 'vertex'])
                 localCollision.append([[x, y], k, 'vertex', None, agent1, agent2])
                 print("collision 1 at time", k)
                 return localCollision
@@ -285,17 +293,15 @@ def detectCollision(agent1, agent2): #takes in the paths, finds first new collis
                 try:
                     if agent1[k + 1] == agent2[k] and agent1[k] == agent2[k + 1]:  # edge collision
                         print('collision 2 detected', k)
-                        print([agent1[k][0], agent1[k][1], k], allCollisions)
                         x = agent1[k][0]
                         y = agent1[k][1]
-                        allCollisions.append([x, y, k, 'edge'])
                         localCollision.append([[x, y], k, 'edge', agent1[k + 1], agent1, agent2])
                         print("collision 2 at time", k)
                         return localCollision
                     else:
                         print('no collision')
-                except:
-                    print('no collision')
+                except: #incase of index error
+                    print('no collision', k)
         else:
             print('no collision')
 
@@ -318,25 +324,26 @@ def standardSplitting(collision):
         return [collision[0], collision[1], None] #collision location, time
 
 def CBS(paths):
-    global allCollisions
+    nodeExploredCount = 0
     allConstraints = []
-    nodesCBS = pq()
+    nodesCBS = []
     initialNode = CBSNode()
     initialNode.paths = paths.copy()
     initialNode.cost = totalCost(paths)
     initialNode.collisions = detectAllCollisions(paths)
-    nodesCBS.put((initialNode.cost, initialNode))
-    while not nodesCBS.empty():
-        currentNode = nodesCBS.get()[1]
+    hq.heappush(nodesCBS, (initialNode.cost, initialNode))
+    while len(nodesCBS) != 0:
+        _, currentNode = hq.heappop(nodesCBS)
+        nodeExploredCount += 1
         if not currentNode.collisions:
+            print('num of constraints', len(allConstraints))
+            print('number of nodes', nodeExploredCount)
             return currentNode.paths
         currentCollision = currentNode.collisions[0]
-        constraints = standardSplitting(currentCollision)
-        allConstraints.append(constraints)
+        constraint = standardSplitting(currentCollision)
+        allConstraints.append(constraint)
         for agent in currentCollision[-2:]:
             newPath = aStar(agent[0], agent[-1], allConstraints)
-            print('constraints', allConstraints)
-            print('path', newPath)
             if not newPath:  # no path
                 continue
             pathIndex = currentNode.paths.index(agent)
@@ -347,10 +354,14 @@ def CBS(paths):
             newNode.cost = totalCost(newPaths)
             newNode.collisions = detectAllCollisions(newPaths)
             newNode.constraints = allConstraints
-            nodesCBS.put((newNode.cost, newNode))
-            if not newNode.collisions:
+            hq.heappush(nodesCBS, (newNode.cost, newNode))
+            if newNode.collisions == []:
+                nodeExploredCount += 1
+                print('num of constraints', len(allConstraints))
+                print('number of nodes', nodeExploredCount)
                 return newNode.paths
+
     return paths
 
 # main
-displayMap('specificTest.txt')
+displayMap('warehouse.txt')
